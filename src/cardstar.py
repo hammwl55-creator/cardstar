@@ -26,9 +26,28 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.join(HERE, "vendor")]
 
 import iax2  # noqa: E402
+import iax2.call  # noqa: E402
+import iax2.registration  # noqa: E402
 
 import cardstar_mic  # noqa: E402
 import cardstar_setup  # noqa: E402
+
+PLAINTEXT_REFUSED = "plain-text login refused by CardStar"
+_library_auth_reply = iax2.call.build_auth_reply
+
+
+def _auth_reply_no_plaintext(creds, methods, challenge):
+    """Answer a login request, but never by sending the secret itself.
+    The library falls back to plain text when a server offers only that;
+    raising here makes it hang up instead, before anything is sent."""
+    ies, method = _library_auth_reply(creds, methods, challenge)
+    if method == iax2.AuthMethod.PLAINTEXT:
+        raise iax2.AuthenticationError(PLAINTEXT_REFUSED)
+    return ies, method
+
+
+iax2.call.build_auth_reply = _auth_reply_no_plaintext
+iax2.registration.build_auth_reply = _auth_reply_no_plaintext
 
 # Receive audio: played through PipeWire with pacat (8 kHz, 16-bit, mono).
 PLAYER = ["pacat", "--playback", "--raw", "--format=s16le", "--rate=8000",
@@ -95,9 +114,14 @@ FRAME_BYTES = 320        # 20 ms of 8 kHz 16-bit mono
 MIC_GAIN = cardstar_setup.DEFAULT_MIC_GAIN  # the built-in mic is quiet; boost it
 LIMIT_KNEE = 24000       # above the normal gain, peaks past this are squeezed
 TX_TIMEOUT = 120         # seconds: auto-stop transmitting (safety)
+MIC_STALE = 1.0          # seconds without mic audio = the mic is not running
+GUARD_EVERY = 0.1        # how often the transmit guard checks
 
 # Auto-reconnect when the link drops (Wi-Fi, server restart). Waits grow
 # 5 -> 10 -> 20 -> 40 -> 60 s so we don't hammer the server.
+# Space: events closer together than this are key-repeat (a held key) or a
+# very fast double tap. Either way the net change is none, so they cancel.
+SPACE_REPEAT = 0.12
 RECONNECT_FIRST = 5
 RECONNECT_MAX = 60
 
@@ -117,6 +141,8 @@ class Client:
         self.tx_since = None       # time PTT was pressed (None = not transmitting)
         self.tx_peak = 0           # mic level while transmitting (for display)
         self.tx_best = 0           # loudest level since PTT was pressed
+        self.mic_proc = None       # the running mic recorder, if any
+        self.mic_last = 0.0        # when the mic last delivered audio
         self.rx_until = 0.0        # show RX until this time
         self.rx_vol = RX_VOL_START
         self.agc = AutoGain()
@@ -125,6 +151,7 @@ class Client:
         self.dtmf = ""             # last command sent (for display)
         self._dtmf_q = asyncio.Queue()
         asyncio.create_task(self._dtmf_worker())
+        asyncio.create_task(self._tx_guard())
 
     def type_digit(self, digit: str) -> None:
         if self.connected:
@@ -205,7 +232,9 @@ class Client:
             return
         except iax2.CallRejected as e:
             self.want_connected = False
-            if "no authority" in str(e).lower():     # bad username or secret
+            if PLAINTEXT_REFUSED in str(e):
+                self.set("FAILED", "Server wants plain-text login: refused")
+            elif "no authority" in str(e).lower():     # bad username or secret
                 self.set("FAILED", "Login refused - s=setup")
             else:
                 self.set("FAILED", f"Rejected: {e}")
@@ -234,9 +263,17 @@ class Client:
     def tx(self) -> bool:
         return self.tx_since is not None
 
+    @property
+    def mic_live(self) -> bool:
+        """The mic recorder is running and audio arrived very recently."""
+        return (self.mic_proc is not None and self.mic_proc.returncode is None
+                and time.monotonic() - self.mic_last < MIC_STALE)
+
     def toggle_ptt(self) -> None:
         if self.tx:
             self.ptt_off()
+        elif self.connected and not self.mic_live:
+            self.detail = "Mic not running - no TX"
         elif self.connected:
             self.call.radio_key()
             self.tx_since = time.monotonic()
@@ -256,6 +293,21 @@ class Client:
         if why:
             self.detail = why
 
+    async def _tx_guard(self) -> None:
+        """Runs on its own clock, whatever the mic does: ends a transmission
+        at the time limit, or as soon as the mic stops delivering audio."""
+        while True:
+            await asyncio.sleep(GUARD_EVERY)
+            try:
+                if not self.tx:
+                    continue
+                if time.monotonic() - self.tx_since >= TX_TIMEOUT:
+                    self.ptt_off(f"TX stopped: {TX_TIMEOUT}s limit")
+                elif not self.mic_live:
+                    self.ptt_off("TX stopped: mic not running")
+            except Exception:
+                self.ptt_off("TX stopped: error")
+
     async def _transmit(self, call) -> None:
         """Read the mic all the time; send it only while PTT is on."""
         try:
@@ -263,15 +315,15 @@ class Client:
                 *RECORDER, stdout=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
         except OSError as e:
+            self.ptt_off()
             self.detail = f"No mic: {e}"
             return
+        self.mic_proc = mic
         try:
             while not call.is_ended:
                 pcm = await mic.stdout.readexactly(FRAME_BYTES)
+                self.mic_last = time.monotonic()
                 if not self.tx:
-                    continue
-                if time.monotonic() - self.tx_since > TX_TIMEOUT:
-                    self.ptt_off(f"TX stopped: {TX_TIMEOUT}s limit")
                     continue
                 pcm = mic_boost(pcm, self.cfg["mic_gain"])
                 peak = max(map(abs, array.array("h", pcm)))
@@ -283,6 +335,7 @@ class Client:
         except Exception as e:
             self.detail = f"TX error: {type(e).__name__}"
         finally:
+            self.mic_proc = None
             self.ptt_off()
             if mic.returncode is None:
                 mic.terminate()
@@ -417,7 +470,8 @@ def draw(scr, c: Client) -> None:
         lines = ["", ">>>  TRANSMITTING  <<<", "",
                  "ON AIR - node " + c.cfg["node"], f"auto-stop in {left:3d}s",
                  f"gain {c.cfg['mic_gain']:g}x   loudest {min(100, c.tx_best * 100 // 32767)}%",
-                 f"mic [{bar:<{w - 12}}]", "SPACE = stop TX"]
+                 f"mic [{bar:<{w - 12}}]", "SPACE = stop TX",
+                 cardstar_setup.FORCE_QUIT_NOTE]
         for y in range(h):
             text = lines[y] if y < len(lines) else ""
             put(y, 0, text.center(w - 1), big)
@@ -447,6 +501,8 @@ def draw(scr, c: Client) -> None:
         if c.dtmf:
             put(6, 0, f"Sent: {c.dtmf}")
     put(3, 15, f"Vol {c.rx_vol}/5 auto")
+    if h >= 9:
+        put(h - 2, 0, cardstar_setup.FORCE_QUIT_NOTE, curses.A_DIM)
     if c.connected:
         put(h - 1, 0, "SPACE=PTT d=disconnect q=quit", curses.A_DIM)
     else:
@@ -462,47 +518,62 @@ async def ui(scr, c: Client, stop: asyncio.Event, autoconnect: bool) -> None:
     scr.nodelay(True)
     if autoconnect:
         c.start_connect()
-    last_space = 0.0
+    last_space = -1.0
+    pending_space = None             # a Space press waiting to be confirmed
     while not stop.is_set():
         draw(scr, c)
-        key = scr.getch()
-        if key == ord(" "):
-            # Holding Space repeats the key; only the first press counts.
-            now = time.monotonic()
-            if now - last_space > 0.3:
-                c.toggle_ptt()
-            last_space = now
-        elif key in (ord("+"), ord("=")):
-            c.rx_vol = min(5, c.rx_vol + 1)
-        elif key in (ord("-"), ord("_")):
-            c.rx_vol = max(1, c.rx_vol - 1)
-        elif key in (ord("c"), ord("C")):
-            c.start_connect()
-        elif key in (ord("d"), ord("D")):
-            await c.disconnect()
-        elif key in (ord("q"), ord("Q")):
-            return
-        elif key in (ord("s"), ord("S")):
-            if c.connected:
-                c.detail = "Press d first, then s"
-            else:
-                await c.disconnect()           # stop any retry in progress
-                new = await cardstar_setup.setup_screen(scr, c.cfg, stop)
-                scr.clear()
-                _bg[0] = None
-                if new:
-                    c.cfg = new
-                    c.set("IDLE", "Settings saved")
-                    if autoconnect:
-                        c.start_connect()
-        elif 0 <= key < 256 and chr(key) in "0123456789*#":
-            c.type_digit(chr(key))
-        elif key in (10, 13, curses.KEY_ENTER):
-            c.send_typed()
-        elif key in (8, 127, curses.KEY_BACKSPACE):
-            c.typed = c.typed[:-1]
-        elif key == 27:  # Esc
-            c.typed = ""
+        if pending_space is not None and time.monotonic() - pending_space >= SPACE_REPEAT:
+            pending_space = None
+            c.toggle_ptt()
+        while True:                      # handle every key waiting, not just one
+            key = scr.getch()
+            if key == -1:
+                break
+            if key == ord(" "):
+                # The terminal never reports key release. A held Space sends a
+                # first press, a pause, then fast repeats; a quick double tap
+                # sends two close presses. Close pairs cancel out (net: no
+                # change), so a hold toggles once and on-off ends as it began.
+                now = time.monotonic()
+                if now - last_space < SPACE_REPEAT:
+                    pending_space = None
+                else:
+                    pending_space = now
+                last_space = now
+            elif key in (ord("+"), ord("=")):
+                c.rx_vol = min(5, c.rx_vol + 1)
+            elif key in (ord("-"), ord("_")):
+                c.rx_vol = max(1, c.rx_vol - 1)
+            elif key in (ord("c"), ord("C")):
+                c.start_connect()
+            elif key in (ord("d"), ord("D")):
+                pending_space = None
+                await c.disconnect()
+            elif key in (ord("q"), ord("Q")):
+                return
+            elif key in (ord("s"), ord("S")):
+                if c.connected:
+                    c.detail = "Press d first, then s"
+                else:
+                    pending_space = None
+                    await c.disconnect()           # stop any retry in progress
+                    new = await cardstar_setup.setup_screen(scr, c.cfg, stop)
+                    scr.clear()
+                    _bg[0] = None
+                    if new:
+                        c.cfg = new
+                        c.set("IDLE", "Settings saved")
+                        if autoconnect:
+                            c.start_connect()
+                    break
+            elif 0 <= key < 256 and chr(key) in "0123456789*#":
+                c.type_digit(chr(key))
+            elif key in (10, 13, curses.KEY_ENTER):
+                c.send_typed()
+            elif key in (8, 127, curses.KEY_BACKSPACE):
+                c.typed = c.typed[:-1]
+            elif key == 27:  # Esc
+                c.typed = ""
         await asyncio.sleep(0.05)
 
 

@@ -2,7 +2,7 @@ Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: CardStar
 
 Files: *
-Copyright: Copyright (C) 2026 TheBeardedHamm
+Copyright: 2026 TheBeardedHamm
 License: GPL-2.0-only
 
 Files: usr/share/APPLaunch/apps/cardstar/vendor/*

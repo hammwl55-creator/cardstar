@@ -109,6 +109,11 @@ def save(cfg: dict) -> None:
             os.unlink(tmp)
 
 
+def footer_keys(editing: bool) -> str:
+    # First run: Esc leaves the app. Editing: Esc goes back to the main screen.
+    return f"Enter=next Up/Down=move Esc={'back' if editing else 'quit'}"
+
+
 def _draw(scr, values, at, message, editing, reveal) -> None:
     scr.erase()
     h, w = scr.getmaxyx()
@@ -134,7 +139,7 @@ def _draw(scr, values, at, message, editing, reveal) -> None:
                     if 1 + row < h - 2:
                         put(1 + row, 0, text[start:start + wide])
             put(h - 2, 0, message or "Left/Right = hide", curses.A_BOLD if message else 0)
-            put(h - 1, 0, "Enter=next Up/Down=move Esc=cancel", curses.A_DIM)
+            put(h - 1, 0, footer_keys(editing), curses.A_DIM)
             scr.refresh()
             return
         if editing and not value:
@@ -146,7 +151,7 @@ def _draw(scr, values, at, message, editing, reveal) -> None:
     if h >= 9:
         footer.append((message or hint, curses.A_BOLD if message else 0))
     footer.append((message if message and h < 9 else FORCE_QUIT_NOTE, 0))
-    footer.append(("Enter=next Up/Down=move Esc=cancel", curses.A_DIM))
+    footer.append((footer_keys(editing), curses.A_DIM))
     rows = max(1, h - len(footer))          # fields visible; scrolls if short
     first = max(0, min(at - rows + 1, len(FIELDS) - rows))
 
