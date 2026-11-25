@@ -1,0 +1,19 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: CardStar
+
+Files: *
+Copyright: Copyright (C) 2026 TheBeardedHamm
+License: GPL-2.0-only
+
+Files: usr/share/APPLaunch/apps/cardstar/vendor/*
+Copyright: 2026 Jason D. McCormick <jason@mfamily.org>
+Source: https://github.com/AllStarLink/py-iax2
+Comment: the "iax2" library, version 0.1.0b2, included unmodified.
+License: GPL-2.0-only
+
+License: GPL-2.0-only
+ This program is free software; you can redistribute it and/or modify it
+ under the terms of the GNU General Public License version 2 as published
+ by the Free Software Foundation. This program is distributed WITHOUT ANY
+ WARRANTY. The full text is in the LICENSE file next to this one, and on
+ Debian systems in /usr/share/common-licenses/GPL-2.

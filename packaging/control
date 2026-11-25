@@ -1,0 +1,12 @@
+Package: cardstar
+Version: 0.1.4
+Architecture: all
+Maintainer: TheBeardedHamm <318806867+hammwl55-creator@users.noreply.github.com>
+Installed-Size: @SIZE@
+Depends: python3 (>= 3.11), pulseaudio-utils, alsa-utils
+Section: APPLaunch
+Priority: optional
+Description: unofficial AllStar (IAX2) client for the CardputerZero
+ Connect to your own AllStar node over IAX2: push-to-talk, DTMF commands
+ and automatic receive volume, in the launcher's terminal.
+ Not affiliated with or endorsed by AllStarLink.

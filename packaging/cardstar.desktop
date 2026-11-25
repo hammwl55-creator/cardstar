@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=CardStar
+Exec=/usr/share/APPLaunch/bin/cardstar
+Terminal=true
+Sysplause=false
+Icon=share/images/cardstar_100.png
+Type=Application

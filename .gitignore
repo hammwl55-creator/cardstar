@@ -1,0 +1,11 @@
+# build output
+*.deb
+.stage.*/
+__pycache__/
+*.pyc
+
+# local junk and anything personal
+.DS_Store
+*.log
+config
+*.conf

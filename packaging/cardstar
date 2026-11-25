@@ -1,0 +1,13 @@
+#!/bin/sh
+# CardStar start script.
+# Copyright (C) 2026 TheBeardedHamm
+# SPDX-License-Identifier: GPL-2.0-only
+# The launcher labels its terminal vt100, but it is really st (full colour).
+# st-256color comes from ncurses-term; fall back if that is not installed.
+if [ -e /usr/share/terminfo/s/st-256color ]; then
+    TERM=st-256color
+else
+    TERM=xterm-256color
+fi
+export TERM COLORTERM=truecolor
+exec /usr/bin/python3 -I -B /usr/share/APPLaunch/apps/cardstar/cardstar.py --connect "$@"
