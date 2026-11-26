@@ -9,6 +9,22 @@ IAX2 login that can dial the node.
 
 **A valid amateur radio license is required to transmit.**
 
+## Screenshots
+
+All values shown are made up.
+
+![CardStar selected in the CardputerZero launcher](screenshots/launcher.png)
+
+*Launcher*
+
+![Setup screen with server, username, secret, node, caller ID and mic gain](screenshots/setup.png)
+
+*Setup (changing saved settings)*
+
+![Main screen showing FAILED, No answer from server](screenshots/connection-failed.png)
+
+*Connection failed*
+
 ## First run
 
 CardStar asks for: server, port (blank = 4569), username, secret, node

@@ -1,6 +1,6 @@
 {
   "package_name": "cardstar",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "app_name": "CardStar",
   "bin_name": "cardstar",
   "description": "Unofficial AllStar (IAX2) client for the CardputerZero",
@@ -8,7 +8,7 @@
     "summary": "Unofficial AllStar (IAX2) client: push-to-talk and DTMF for your node",
     "description": "Connect to your own AllStar node over IAX2. Needs an IAX2 login on a server you are allowed to use. The secret is stored as plain text in a private file. Stop transmitting and quit with q: holding Esc/Home force-quits and can leave the node transmitting until the server times out. A valid amateur radio license is required to transmit. Not affiliated with AllStarLink.",
     "categories": ["Radio & Comms"],
-    "screenshots": ["store/screenshot.png"],
+    "screenshots": ["screenshots/launcher.png", "screenshots/setup.png", "screenshots/connection-failed.png"],
     "icon": "store/icon_256.png",
     "license": "GPL-2.0-only",
     "author": { "display_name": "TheBeardedHamm" },
