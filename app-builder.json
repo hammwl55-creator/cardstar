@@ -11,6 +11,7 @@
     "screenshots": ["screenshots/launcher.png", "screenshots/setup.png", "screenshots/connection-failed.png"],
     "icon": "store/icon_256.png",
     "license": "GPL-2.0-only",
+    "source_repo": "https://github.com/hammwl55-creator/cardstar",
     "author": { "display_name": "TheBeardedHamm" },
     "share_code": "CSTR",
     "permissions": {
