@@ -9,6 +9,8 @@ IAX2 login that can dial the node.
 
 **A valid amateur radio license is required to transmit.**
 
+CardStar is on the CardputerZero Store: install it from the Store app on your CardputerZero.
+
 ## Screenshots
 
 All values shown are made up.
