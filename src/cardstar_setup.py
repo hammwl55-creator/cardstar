@@ -10,6 +10,8 @@ import os
 import re
 import tempfile
 
+import cardstar_layout
+
 CONFIG_DIR = os.path.expanduser("~/.config/cardstar")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config")
 DEFAULT_PORT = 4569   # the standard IAX2 port; used if the port is left blank
@@ -88,13 +90,27 @@ def load():
             return None
         cfg["port"] = int(cfg["port"] or DEFAULT_PORT)
         cfg["mic_gain"] = gain
+        cfg["compact"] = cardstar_layout.config_value(data.get("compact", "auto"))
         return cfg
     except (OSError, ValueError, AttributeError):
         return None
 
 
+def read_compact():
+    """Just the "compact" setting ("auto", True or False), even when the rest
+    of the file is missing or incomplete (as on the first-run screen)."""
+    try:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return cardstar_layout.config_value(data.get("compact", "auto"))
+    except (OSError, ValueError, AttributeError):
+        return "auto"
+
+
 def save(cfg: dict) -> None:
     make_private()
+    if "compact" not in cfg:               # never drop the setting
+        cfg = dict(cfg, compact=read_compact())
     fd, tmp = tempfile.mkstemp(dir=CONFIG_DIR, prefix=".config-")  # mode 600
     try:
         os.fchmod(fd, 0o600)
@@ -140,6 +156,7 @@ def _draw(scr, values, at, message, editing, reveal) -> None:
                         put(1 + row, 0, text[start:start + wide])
             put(h - 2, 0, message or "Left/Right = hide", curses.A_BOLD if message else 0)
             put(h - 1, 0, footer_keys(editing), curses.A_DIM)
+            cardstar_layout.park(scr)
             scr.refresh()
             return
         if editing and not value:
@@ -150,7 +167,8 @@ def _draw(scr, values, at, message, editing, reveal) -> None:
     footer = []
     if h >= 9:
         footer.append((message or hint, curses.A_BOLD if message else 0))
-    footer.append((message if message and h < 9 else FORCE_QUIT_NOTE, 0))
+    footer.append((message if message and h < 9
+                   else cardstar_layout.force_quit_note(FORCE_QUIT_NOTE), 0))
     footer.append((footer_keys(editing), curses.A_DIM))
     rows = max(1, h - len(footer))          # fields visible; scrolls if short
     first = max(0, min(at - rows + 1, len(FIELDS) - rows))
@@ -176,6 +194,7 @@ def _draw(scr, values, at, message, editing, reveal) -> None:
     for text, attr in footer:
         put(y, 0, text, attr)
         y += 1
+    cardstar_layout.park(scr)
     scr.refresh()
 
 
@@ -223,6 +242,7 @@ async def setup_screen(scr, old, stop):
                 continue
             cfg["port"] = int(cfg["port"] or DEFAULT_PORT)
             cfg["mic_gain"] = clamp_gain(cfg["mic_gain"] or DEFAULT_MIC_GAIN)
+            cfg["compact"] = old.get("compact", "auto") if old else read_compact()
             try:
                 save(cfg)
             except OSError:

@@ -29,6 +29,7 @@ import iax2  # noqa: E402
 import iax2.call  # noqa: E402
 import iax2.registration  # noqa: E402
 
+import cardstar_layout  # noqa: E402
 import cardstar_mic  # noqa: E402
 import cardstar_setup  # noqa: E402
 
@@ -409,7 +410,7 @@ class Client:
         self.typed = ""
 
 
-# ---- screen (fits 38 x 8) ---------------------------------------------
+# ---- screen (fits 38 x 8; compact mode: a fixed 46 x 10 area) ---------
 COLORS = {"CONNECTED": 1, "CONNECTING": 2, "DISCONNECTING": 2, "RECONNECTING": 2,
           "FAILED": 3}
 HAS_COLOR = False
@@ -471,10 +472,11 @@ def draw(scr, c: Client) -> None:
                  "ON AIR - node " + c.cfg["node"], f"auto-stop in {left:3d}s",
                  f"gain {c.cfg['mic_gain']:g}x   loudest {min(100, c.tx_best * 100 // 32767)}%",
                  f"mic [{bar:<{w - 12}}]", "SPACE = stop TX",
-                 cardstar_setup.FORCE_QUIT_NOTE]
+                 cardstar_layout.force_quit_note(cardstar_setup.FORCE_QUIT_NOTE)]
         for y in range(h):
             text = lines[y] if y < len(lines) else ""
             put(y, 0, text.center(w - 1), big)
+        cardstar_layout.park(scr)
         scr.refresh()
         return
 
@@ -502,11 +504,13 @@ def draw(scr, c: Client) -> None:
             put(6, 0, f"Sent: {c.dtmf}")
     put(3, 15, f"Vol {c.rx_vol}/5 auto")
     if h >= 9:
-        put(h - 2, 0, cardstar_setup.FORCE_QUIT_NOTE, curses.A_DIM)
+        put(h - 2, 0, cardstar_layout.force_quit_note(cardstar_setup.FORCE_QUIT_NOTE),
+            curses.A_DIM)
     if c.connected:
         put(h - 1, 0, "SPACE=PTT d=disconnect q=quit", curses.A_DIM)
     else:
         put(h - 1, 0, "c=connect d=disconnect s=setup q=quit", curses.A_DIM)
+    cardstar_layout.park(scr)
     scr.refresh()
 
 
@@ -577,12 +581,26 @@ async def ui(scr, c: Client, stop: asyncio.Event, autoconnect: bool) -> None:
         await asyncio.sleep(0.05)
 
 
-async def run(scr, autoconnect: bool) -> None:
+def pick_layout(stdscr, flag):
+    """Choose full or compact layout once, and return the window to draw in."""
+    cardstar_layout.COMPACT, _why = cardstar_layout.choose(
+        flag, os.environ.get("CARDSTAR_COMPACT"), cardstar_setup.read_compact(),
+        stdscr.getmaxyx())
+    if cardstar_layout.COMPACT:
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
+    return cardstar_layout.area(stdscr)
+
+
+async def run(stdscr, autoconnect: bool, compact_flag=None) -> None:
     # If the launcher closes the terminal, leave cleanly: hang up, restore mic.
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
+    scr = pick_layout(stdscr, compact_flag)
     cfg = cardstar_setup.load()
     if cfg is None:                            # first run
         cfg = await cardstar_setup.setup_screen(scr, None, stop)
@@ -606,6 +624,11 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="cardstar")
     p.add_argument("--connect", action="store_true",
                    help="connect straight away when the app opens")
+    size = p.add_mutually_exclusive_group()
+    size.add_argument("--compact", dest="compact", action="store_true", default=None,
+                      help="small 46x10 layout (default: automatic)")
+    size.add_argument("--no-compact", dest="compact", action="store_false",
+                      help="full-size layout")
     args = p.parse_args()
 
     # CardStar keeps no log file. This also stops library messages, which could
@@ -616,7 +639,7 @@ def main() -> None:
         setup_colors()
         if hasattr(curses, "set_escdelay"):
             curses.set_escdelay(100)
-        asyncio.run(run(scr, args.connect))
+        asyncio.run(run(scr, args.connect, args.compact))
 
     try:
         curses.wrapper(start)

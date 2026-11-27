@@ -75,6 +75,17 @@ the server times out.
 On units with the ES8389 sound chip, CardStar raises the microphone gain while
 it runs and puts your old value back when it exits normally.
 
+## Small screens (Gh0st OS)
+
+Gh0st OS's launcher terminal reports 80x24 but shows only part of that, so
+CardStar uses a compact layout there: everything fits in 46 columns by 10 rows
+at the top left. It is picked automatically under `gh0st-term`, or when the
+terminal reports less than 80x24. To choose yourself (first match wins):
+
+- `--compact` or `--no-compact` on the command line
+- `CARDSTAR_COMPACT=1` or `CARDSTAR_COMPACT=0` in the environment
+- `"compact": true`, `false` or `"auto"` (the default) in the settings file
+
 ## Building
 
 On a Debian system: `sh packaging/build.sh` (needs `dpkg-deb`). Nothing is

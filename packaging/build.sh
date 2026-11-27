@@ -14,7 +14,7 @@ APP="$AL/apps/cardstar"
 DOC="$ROOT/usr/share/doc/cardstar"
 mkdir -p "$ROOT/DEBIAN" "$AL/applications" "$AL/bin" "$AL/share/images" "$APP/vendor" "$DOC"
 
-cp src/cardstar.py src/cardstar_setup.py src/cardstar_mic.py "$APP/"
+cp src/cardstar.py src/cardstar_setup.py src/cardstar_mic.py src/cardstar_layout.py "$APP/"
 cp -R vendor/iax2 vendor/iax2-0.1.0b2.dist-info "$APP/vendor/"
 cp packaging/cardstar "$AL/bin/cardstar"
 cp packaging/cardstar.desktop "$AL/applications/"
